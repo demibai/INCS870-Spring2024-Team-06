@@ -1,5 +1,6 @@
 /unsw_nb15/*
-.DS_STORE
 /figures
 /models
 /reports
+.DS_STORE
+run_model_batch.ps1

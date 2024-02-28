@@ -26,7 +26,7 @@ def main():
             if report.find("baseline") != -1:
                 models.append("baseline")
                 fc_methods.append("baseline-none")
-                Ks.append(46)
+                Ks.append(49)
                 accuracies.append(float(extract_one(data, 'accuracy')))
             else:
                 models.append(extract_one(data, "model_name"))
