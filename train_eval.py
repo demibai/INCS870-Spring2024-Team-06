@@ -170,7 +170,19 @@ def main(**kwargs):
     else:
         # Model training
         start_time = time.time()
-        model = XGBClassifier()
+        xgboost_params = {
+            "objective": "multi:softprob",
+            "min_child_weight": 1,
+            "max_depth": 6,
+            "num_class": 10,
+            "learning_rate": 0.1,
+            "n_estimators": 200,
+            "subsample": 0.5,
+            "colsample_bytree": 0.5,
+            "reg_lambda": 1,
+            "reg_alpha": 0
+        }
+        model = XGBClassifier(**xgboost_params)
         model.fit(X_train, y_train)
         end_time = time.time()
         model_training_time = round(end_time - start_time, 2)
