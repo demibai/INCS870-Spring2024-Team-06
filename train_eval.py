@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.feature_selection import RFE, VarianceThreshold, SelectKBest, chi2, f_classif, mutual_info_classif
+from sklearn.feature_selection import RFE, RFECV, VarianceThreshold, SelectKBest, chi2, f_classif, mutual_info_classif
 import os
 import time
 import joblib
@@ -25,9 +25,9 @@ def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TES
     return train_data, test_data
 
 
-# def load_model_from_pickle(model_path):
-#     model = joblib.load(model_path)
-#     return model
+def load_model_from_pickle(model_path):
+    model = joblib.load(model_path)
+    return model
 
 
 def cat_to_num(data):
@@ -50,10 +50,10 @@ def cat_to_num(data):
 
     return data
 
-def feature_selection(X_train, y_train, X_test, method, k=None):
+def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
     # Feature selection sub-routine
     feature_selection_time = 0
-    if method == "rfe":
+    if method == "rfe" or method == "rfecv":
         # Recursive Feature Elimination
         if not k:
             k = 20
@@ -62,7 +62,12 @@ def feature_selection(X_train, y_train, X_test, method, k=None):
         print("[Feature Selection] Using Recursive Feature Elimination,", "selecting", str(k), "features.")
         start_time = time.time()
         model = XGBClassifier()
-        rfe = RFE(model, n_features_to_select=k)
+        if method == "rfecv":
+            cv = 5 if not cv else int(cv)
+            print("[Feature Selection] Using RFECV, splitting dataset into %d folds." % cv)
+            rfe = RFECV(model, step=1, min_features_to_select=k,cv=cv)
+        else:
+            rfe = RFE(model, n_features_to_select=k)
         fit = rfe.fit(X_train, y_train)
         selected_features = fit.get_support(indices=True)
         X_train = X_train[X_train.columns[selected_features]]
@@ -143,8 +148,8 @@ def main(**kwargs):
     train_data = cat_to_num(train_data)
     test_data = cat_to_num(test_data)
 
-    print("[Dataset Loading] Train dataset shape:", train_data.shape)
-    print("[Dataset Loading] Test dataset shape:", test_data.shape)
+    print("[Dataset] Train dataset shape:", train_data.shape)
+    print("[Dataset] Test dataset shape:", test_data.shape)
 
     y_train = train_data["attack_cat"]
     X_train = train_data.drop(["id", "label", "attack_cat"], axis=1)
@@ -154,24 +159,36 @@ def main(**kwargs):
 
     k = kwargs.get("k", None)
     X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
+    
+    if kwargs.get("model_path", None):
+        # Load model from local file
+        model = load_model_from_pickle(kwargs.get("model_path"))
+        print("[Model] Model loaded from", kwargs.get("model_path"))
+        model_features = model.get_booster().feature_names
+        y_pred = model.predict(X_test[model_features])
+        VERBOSE = False
+    else:
+        # Model training
+        start_time = time.time()
+        model = XGBClassifier()
+        model.fit(X_train, y_train)
+        end_time = time.time()
+        model_training_time = round(end_time - start_time, 2)
+        print("[Model] Training time:", model_training_time, "seconds")
+        y_pred = model.predict(X_test)
+        VERBOSE = True
 
-    # Model training
-    start_time = time.time()
-    model = XGBClassifier()
-    model.fit(X_train, y_train)
-    end_time = time.time()
-    model_training_time = round(end_time - start_time, 2)
-    print("[Model] Training time:", model_training_time, "seconds")
-    y_pred = model.predict(X_test)
-
-    # Freeze model to disk
-    print("[Model] Freezing params to disk")
     timestamp = int(time.time())
-    model_name = model.__class__.__name__.lower()
-    file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
-    file_prefix += str(k) if k else "all"
-    joblib.dump(model, MODELS_PATH + file_prefix + "_model" + ".pkl")
-    print("[Model] Model saved to", MODELS_PATH + file_prefix + ".pkl")
+    if not kwargs.get("model_path", None):
+        # Freeze model to disk
+        print("[Model] Freezing params to disk")
+        model_name = model.__class__.__name__.lower()
+        file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
+        file_prefix += str(k) if k else "all"
+        joblib.dump(model, MODELS_PATH + file_prefix + "_model" + ".pkl")
+        print("[Model] Model saved to", MODELS_PATH + file_prefix + ".pkl")
+    else:
+        file_prefix = str(timestamp) + "_loaded_model"
 
     accuracy = accuracy_score(y_test, y_pred)
     print("[Model] Accuracy: %.2f%%" % (accuracy * 100.0))
@@ -181,18 +198,18 @@ def main(**kwargs):
     print(classification_report(y_test, y_pred))
     report = classification_report(y_test, y_pred, output_dict=True)
     report_df = pd.DataFrame(report).transpose()
-
-    # Verbose report
-    report_df.loc[""] = ""
-    report_df.loc["model_name"] = model_name
-    report_df.loc["model_training_time"] = model_training_time
-    report_df.loc["feature_selection_method"] = kwargs.get("method", "none")
-    report_df.loc["k"] = k
-    report_df.loc["feature_selection_time"] = fs_time
-    report_df.loc["accuracy"] = accuracy
-    report_df.loc["recall"] = report_df.loc["weighted avg"]["recall"]
-    report_df.loc["precision"] = report_df.loc["weighted avg"]["precision"]
-    report_df.loc["f1_score"] = report_df.loc["weighted avg"]["f1-score"]
+    if VERBOSE:
+        # Verbose report
+        report_df.loc[""] = ""
+        report_df.loc["model_name"] = model_name
+        report_df.loc["model_training_time"] = model_training_time
+        report_df.loc["feature_selection_method"] = kwargs.get("method", "none")
+        report_df.loc["k"] = k
+        report_df.loc["feature_selection_time"] = fs_time
+        report_df.loc["accuracy"] = accuracy
+        report_df.loc["recall"] = report_df.loc["weighted avg"]["recall"]
+        report_df.loc["precision"] = report_df.loc["weighted avg"]["precision"]
+        report_df.loc["f1_score"] = report_df.loc["weighted avg"]["f1-score"]
 
     # Save report to disk
     report_df.to_csv("reports/" + file_prefix + "_report.csv")
@@ -211,4 +228,3 @@ def main(**kwargs):
 
 if __name__ == "__main__":
     main(**dict(arg.split("=") for arg in sys.argv[1:]) if len(sys.argv) > 1 else {})
-    print("Done!")
