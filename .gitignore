@@ -1,4 +1,2 @@
-/unsw_nb15
-/figures
-/models
-/reports
+/unsw_nb15/*
+.DS_STORE
