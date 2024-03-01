@@ -2,8 +2,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.feature_selection import RFE, RFECV, VarianceThreshold, SelectKBest, chi2, f_classif, mutual_info_classif
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 import os
 import time
 import joblib
@@ -16,13 +19,23 @@ TRAIN_FILE = "UNSW_NB15_training-set.csv"
 TEST_FILE = "UNSW_NB15_testing-set.csv"
 
 
-def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TEST_FILE):
+def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TEST_FILE, pca=False):
     train_set_path = os.path.join(dataset_path, train_file)
     test_set_path = os.path.join(dataset_path, test_file)
     train_data = pd.read_csv(train_set_path)
     test_data = pd.read_csv(test_set_path)
 
     return train_data, test_data
+
+
+def normalize_data(data):
+    cnt = 0
+    for feature in data.columns:
+        if data[feature].dtype == "float64":
+            data[feature] = np.log1p(data[feature])
+            cnt += 1
+    print("[Normalization] Normalized", cnt, "numerical features.")
+    return data
 
 
 def load_model_from_pickle(model_path):
@@ -32,21 +45,19 @@ def load_model_from_pickle(model_path):
 
 def cat_to_num(data):
     # protocol
-    data["proto"] = data["proto"].astype("category")
-    data["proto"] = data["proto"].cat.codes
+    data["proto"] = LabelEncoder().fit_transform(data["proto"])
 
     # service
-    data["service"] = data["service"].astype("category")
-    data["service"] = data["service"].cat.codes
+    data["service"] = LabelEncoder().fit_transform(data["service"])
 
     # state
-    data["state"] = data["state"].astype("category")
-    data["state"] = data["state"].cat.codes
+    data["state"] = LabelEncoder().fit_transform(data["state"])
 
     # attack category
-    data["attack_cat"] = data["attack_cat"].astype("category")
-    data["attack_cat"] = data["attack_cat"].cat.codes
+    data["attack_cat"] = LabelEncoder().fit_transform(data["attack_cat"])
 
+    # label
+    data["label"] = LabelEncoder().fit_transform(data["label"])
 
     return data
 
@@ -143,6 +154,10 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
 
 
 def main(**kwargs):
+    task = kwargs.get("task", "multi")
+    if task not in ["multi", "binary"]:
+        raise ValueError("Invalid task. Use 'multi' or 'binary'.")
+
     # Load dataset
     train_data, test_data = load_dataset()
     train_data = cat_to_num(train_data)
@@ -151,44 +166,92 @@ def main(**kwargs):
     print("[Dataset] Train dataset shape:", train_data.shape)
     print("[Dataset] Test dataset shape:", test_data.shape)
 
-    y_train = train_data["attack_cat"]
-    X_train = train_data.drop(["id", "label", "attack_cat"], axis=1)
+    corr_matrix = train_data.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > 0.95)]
 
-    y_test = test_data["attack_cat"]
-    X_test = test_data.drop(["id", "label", "attack_cat"], axis=1)
+    y_train = train_data["attack_cat"] if task == "multi" else train_data["label"]
+    X_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+
+    y_test = test_data["attack_cat"] if task == "multi" else test_data["label"]
+    X_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+
+    print("[Dataset] Train dataset shape after dropping highly correlated features:", X_train.shape)
+    print("[Dataset] Test dataset shape after dropping highly correlated features:", X_test.shape)
+
+    # Normalize data
+    X_train = normalize_data(X_train)
+    X_test = normalize_data(X_test)
 
     k = kwargs.get("k", None)
     X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
-    
+
+    # Dimensionality reduction
+    if kwargs.get("pca", None):
+        # Scale data
+        scaler = StandardScaler()
+        X_train = pd.DataFrame(scaler.fit_transform(X_train))
+        X_test = pd.DataFrame(scaler.transform(X_test))
+        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else X_train.shape[1])
+        X_train = pd.DataFrame(pca.fit_transform(X_train))
+        X_test = pd.DataFrame(pca.transform(X_test))
+        print("[PCA] Train dataset shape after PCA:", X_train.shape)
+        print("[PCA] Test dataset shape after PCA:", X_test.shape)
+
     if kwargs.get("model_path", None):
         # Load model from local file
         model = load_model_from_pickle(kwargs.get("model_path"))
         print("[Model] Model loaded from", kwargs.get("model_path"))
         model_features = model.get_booster().feature_names
         y_pred = model.predict(X_test[model_features])
-        VERBOSE = False
+        verbose_output = False
     else:
         # Model training
-        start_time = time.time()
-        xgboost_params = {
-            "objective": "multi:softprob",
-            "min_child_weight": 1,
-            "max_depth": 6,
-            "num_class": 10,
-            "learning_rate": 0.1,
-            "n_estimators": 200,
-            "subsample": 0.5,
-            "colsample_bytree": 0.5,
-            "reg_lambda": 1,
-            "reg_alpha": 0
-        }
-        model = XGBClassifier(**xgboost_params)
-        model.fit(X_train, y_train)
-        end_time = time.time()
-        model_training_time = round(end_time - start_time, 2)
-        print("[Model] Training time:", model_training_time, "seconds")
+        grid_search = True if kwargs.get("grid_search", "false") == "true" else False
+        if grid_search:
+            print("[Model] Using GridSearchCV to find best hyperparameters")
+            xgboost_params = {
+                "objective": ["multi:softmax"] if task == "multi" else ["reg:squaredlogerror"],
+                "eval_metric": ["mlogloss", "auc"] if task == "multi" else ["logloss", "auc"],
+                "min_child_weight": [1],
+                "max_depth": [6, 8],
+                "num_class": [10] if task == "multi" else [1],
+                "learning_rate": [0.01, 0.3],
+                "n_estimators": [100, 1000],
+                "subsample": [0.8],
+                "colsample_bytree": [0.8],
+            }
+            model = XGBClassifier()
+            grid = GridSearchCV(model, xgboost_params, cv=StratifiedKFold(n_splits=5), n_jobs=5, verbose=2, scoring="accuracy")
+            start_time = time.time()
+            print("[Model] Training started")
+            grid.fit(X_train, y_train)
+            end_time = time.time()
+            model_training_time = round(end_time - start_time, 2)
+            print("[Model] Training time:", model_training_time, "seconds")
+            print("[Model] Best parameters found by GridSearchCV:", grid.best_params_)
+            model = grid.best_estimator_
+        else:
+            xgboost_params = {
+                "objective": "multi:softmax" if task == "multi" else "reg:squaredlogerror",
+                "eval_metric": "mlogloss" if task == "multi" else "logloss",
+                "min_child_weight": 1,
+                "max_depth": 6,
+                "num_class": 10 if task == "multi" else 1,
+                "learning_rate": 0.3,
+                "n_estimators": 100,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+            }
+            model = XGBClassifier(**xgboost_params)
+            start_time = time.time()
+            print("[Model] Training started")
+            model.fit(X_train, y_train)
+            end_time = time.time()
+            model_training_time = round(end_time - start_time, 2)
+            print("[Model] Training time:", model_training_time, "seconds")
         y_pred = model.predict(X_test)
-        VERBOSE = True
+        verbose_output = True
 
     timestamp = int(time.time())
     if not kwargs.get("model_path", None):
@@ -196,9 +259,9 @@ def main(**kwargs):
         print("[Model] Freezing params to disk")
         model_name = model.__class__.__name__.lower()
         file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
-        file_prefix += str(k) if k else "all"
+        file_prefix += (str(k) if k else "all") + "_" + task
         joblib.dump(model, MODELS_PATH + file_prefix + "_model" + ".pkl")
-        print("[Model] Model saved to", MODELS_PATH + file_prefix + ".pkl")
+        print("[I/O] Model saved to", MODELS_PATH + file_prefix + ".pkl")
     else:
         file_prefix = str(timestamp) + "_loaded_model"
 
@@ -206,14 +269,14 @@ def main(**kwargs):
     print("[Model] Accuracy: %.2f%%" % (accuracy * 100.0))
 
     # Classification report
-    print("[Model] Classification report")
-    print(classification_report(y_test, y_pred))
     report = classification_report(y_test, y_pred, output_dict=True)
     report_df = pd.DataFrame(report).transpose()
-    if VERBOSE:
-        # Verbose report
+
+    if verbose_output:
         report_df.loc[""] = ""
         report_df.loc["model_name"] = model_name
+        report_df.loc["task"] = task
+        report_df.loc["pca"] = kwargs.get("pca", "none")
         report_df.loc["model_training_time"] = model_training_time
         report_df.loc["feature_selection_method"] = kwargs.get("method", "none")
         report_df.loc["k"] = k
@@ -225,6 +288,7 @@ def main(**kwargs):
 
     # Save report to disk
     report_df.to_csv("reports/" + file_prefix + "_report.csv")
+    print("[I/O] Report saved to", "reports/" + file_prefix + "_report.csv")
 
     # Plot feature importance
     feature_importance = model.feature_importances_
@@ -236,6 +300,14 @@ def main(**kwargs):
     plt.yticks(pos, X_train.columns[sorted_idx])
     plt.xlabel("Feature Importance")
     plt.savefig("figures/" + file_prefix + "_importance.png")
+    print("[I/O] Feature importance plot saved to", "figures/" + file_prefix + "_importance.png")
+
+    # Confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    cm_display = ConfusionMatrixDisplay(cm, display_labels=np.unique(y_test))
+    cm_display.plot(cmap="Oranges")
+    plt.savefig("figures/" + file_prefix + "_confusion_matrix.png")
+    print("[I/O] Confusion matrix plot saved to", "figures/" + file_prefix + "_confusion_matrix.png")
 
 
 if __name__ == "__main__":
