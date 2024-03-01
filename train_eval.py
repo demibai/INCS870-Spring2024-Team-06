@@ -4,20 +4,24 @@ import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.feature_selection import RFE, RFECV, VarianceThreshold, SelectKBest, chi2, f_classif, mutual_info_classif
+from configparser import ConfigParser
 import os
 import time
 import joblib
 import sys
 
-DATASET_PATH = "unsw_nb15/"
-FIGURES_PATH = "figures/"
-MODELS_PATH = "models/"
-TRAIN_FILE = "UNSW_NB15_training-set.csv"
-TEST_FILE = "UNSW_NB15_testing-set.csv"
+constants = ConfigParser()
+constants.read("constants.ini")
+
+dataset_path = constants.get("CONSTANTS", "DATASET_PATH")
+figures_path = constants.get("CONSTANTS", "FIGURES_PATH")
+models_path = constants.get("CONSTANTS", "MODELS_PATH")
+train_file = constants.get("CONSTANTS", "TRAIN_FILE")
+test_file = constants.get("CONSTANTS", "TEST_FILE")
 
 
 # Load the training dataset and testing dataset
-def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TEST_FILE):
+def load_dataset():
     train_set_path = os.path.join(dataset_path, train_file)
     test_set_path = os.path.join(dataset_path, test_file)
     train_data = pd.read_csv(train_set_path)
@@ -163,7 +167,7 @@ def main(**kwargs):
     k = kwargs.get("k", None)
     x_train, x_test, fs_time, k = feature_selection(x_train, y_train, x_test,
                                                     kwargs.get("method", None), float(k) if k else None)
-    
+
     if kwargs.get("model_path", None):
         # Load model from local file
         model = load_model_from_pickle(kwargs.get("model_path"))
@@ -201,8 +205,8 @@ def main(**kwargs):
         model_name = model.__class__.__name__.lower()
         file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
         file_prefix += str(k) if k else "all"
-        joblib.dump(model, MODELS_PATH + file_prefix + "_model" + ".pkl")
-        print("[Model] Model saved to", MODELS_PATH + file_prefix + ".pkl")
+        joblib.dump(model, models_path + file_prefix + "_model" + ".pkl")
+        print("[Model] Model saved to", models_path + file_prefix + ".pkl")
     else:
         file_prefix = str(timestamp) + "_loaded_model"
 
