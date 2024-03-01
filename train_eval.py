@@ -16,18 +16,11 @@ import sys
 constants = ConfigParser()
 constants.read("constants.ini")
 
-dataset_path = constants.get("CONSTANTS", "DATASET_PATH")
-figures_path = constants.get("CONSTANTS", "FIGURES_PATH")
-models_path = constants.get("CONSTANTS", "MODELS_PATH")
-train_file = constants.get("CONSTANTS", "TRAIN_FILE")
-test_file = constants.get("CONSTANTS", "TEST_FILE")
-
 
 # Load the training dataset and testing dataset
-def load_dataset():
-def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TEST_FILE, pca=False):
-    train_set_path = os.path.join(dataset_path, train_file)
-    test_set_path = os.path.join(dataset_path, test_file)
+def load_dataset(pca=False):
+    train_set_path = os.path.join(constants.get("CONSTANTS", "DATASET_PATH"), constants.get("CONSTANTS", "TRAIN_FILE"))
+    test_set_path = os.path.join(constants.get("CONSTANTS", "DATASET_PATH"), constants.get("CONSTANTS", "TEST_FILE"))
     train_data = pd.read_csv(train_set_path)
     test_data = pd.read_csv(test_set_path)
 
@@ -178,31 +171,31 @@ def main(**kwargs):
     to_drop = [column for column in upper.columns if any(upper[column] > 0.95)]
 
     y_train = train_data["attack_cat"] if task == "multi" else train_data["label"]
-    X_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    x_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
 
     y_test = test_data["attack_cat"] if task == "multi" else test_data["label"]
-    X_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    x_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
 
-    print("[Dataset] Train dataset shape after dropping highly correlated features:", X_train.shape)
-    print("[Dataset] Test dataset shape after dropping highly correlated features:", X_test.shape)
+    print("[Dataset] Train dataset shape after dropping highly correlated features:", x_train.shape)
+    print("[Dataset] Test dataset shape after dropping highly correlated features:", x_test.shape)
 
     # Normalize data
-    X_train = normalize_data(X_train)
-    X_test = normalize_data(X_test)
+    x_train = normalize_data(x_train)
+    x_test = normalize_data(x_test)
 
     k = kwargs.get("k", None)
-    X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
+    x_train, x_test, fs_time, k = feature_selection(x_train, y_train, x_test, kwargs.get("method", None), float(k) if k else None)
 
     # Dimensionality reduction
     if kwargs.get("pca", None):
         # Scale data
         scaler = StandardScaler()
-        X_train = pd.DataFrame(scaler.fit_transform(X_train))
-        X_test = pd.DataFrame(scaler.transform(X_test))
-        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else X_train.shape[1])
-        X_train = pd.DataFrame(pca.fit_transform(X_train))
-        X_test = pd.DataFrame(pca.transform(X_test))
-        print("[PCA] Train dataset shape after PCA:", X_train.shape)
+        x_train = pd.DataFrame(scaler.fit_transform(x_train))
+        X_test = pd.DataFrame(scaler.transform(x_test))
+        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else x_train.shape[1])
+        x_train = pd.DataFrame(pca.fit_transform(x_train))
+        x_test = pd.DataFrame(pca.transform(X_test))
+        print("[PCA] Train dataset shape after PCA:", x_train.shape)
         print("[PCA] Test dataset shape after PCA:", X_test.shape)
 
     if kwargs.get("model_path", None):
@@ -253,11 +246,11 @@ def main(**kwargs):
             model = XGBClassifier(**xgboost_params)
             start_time = time.time()
             print("[Model] Training started")
-            model.fit(X_train, y_train)
+            model.fit(x_train, y_train)
             end_time = time.time()
             model_training_time = round(end_time - start_time, 2)
             print("[Model] Training time:", model_training_time, "seconds")
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(x_test)
         verbose_output = True
 
     timestamp = int(time.time())
@@ -267,11 +260,11 @@ def main(**kwargs):
         model_name = model.__class__.__name__.lower()
         file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
         file_prefix += (str(k) if k else "all") + "_" + task
-        joblib.dump(model, MODELS_PATH + file_prefix + "_model" + ".pkl")
-        print("[I/O] Model saved to", MODELS_PATH + file_prefix + ".pkl")
+        joblib.dump(model, constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + "_model" + ".pkl")
+        print("[I/O] Model saved to", constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + ".pkl")
         file_prefix += str(k) if k else "all"
-        joblib.dump(model, models_path + file_prefix + "_model" + ".pkl")
-        print("[Model] Model saved to", models_path + file_prefix + ".pkl")
+        joblib.dump(model, constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + "_model" + ".pkl")
+        print("[Model] Model saved to", constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + ".pkl")
     else:
         file_prefix = str(timestamp) + "_loaded_model"
 
