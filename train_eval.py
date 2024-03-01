@@ -44,8 +44,7 @@ def load_model_from_pickle(model_path):
 
 
 # Preprocess the dataset
-# Transform original data type into a categorical data type.
-# Then encode the categories as integer codes.
+# Transform original data type into numerical labels.
 def cat_to_num(data):
     # protocol
     data["proto"] = LabelEncoder().fit_transform(data["proto"])
