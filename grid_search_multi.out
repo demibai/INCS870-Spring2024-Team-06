@@ -1,0 +1,1 @@
+[Model] Best parameters found by GridSearchCV: {'colsample_bytree': 0.8, 'eval_metric': 'mlogloss', 'learning_rate': 0.3, 'max_depth': 6, 'min_child_weight': 1, 'n_estimators': 100, 'num_class': 10, 'objective': 'multi:softmax', 'subsample': 0.8}

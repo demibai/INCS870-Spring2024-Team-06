@@ -37,6 +37,15 @@ To run the project:
 1. Place the dataset files in the unsw_nb15/ directory.
 2. Run the train_eval.py script: python train_eval.py.
 
+### train_eval.py
+This script contains the entire machine learning pipeline.
+It accepts the following optional command-line arguments:
+1. pca n_components: Apply PCA with n_components. Default: None.
+2. method: Choose the method for feature selection. Options: 'rfe', 'rfecv', 'variance_threshold', 'chi2', 'anova', 'mutual_information'. Default: None.
+3. k: Argument to be passed to the feature selection method. For example, k for k-best.
+4. task: Specify which classification task to run. Options: 'binary', 'multi'. Default: 'multi'.
+5. model_path: Path to load a saved model. The program will not train a new model if this argument is provided.
+
 ## Customization
 <!-- You can customize the pipeline by:
 
