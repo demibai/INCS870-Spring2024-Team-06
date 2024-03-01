@@ -16,6 +16,7 @@ TRAIN_FILE = "UNSW_NB15_training-set.csv"
 TEST_FILE = "UNSW_NB15_testing-set.csv"
 
 
+# Load the training dataset and testing dataset
 def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TEST_FILE):
     train_set_path = os.path.join(dataset_path, train_file)
     test_set_path = os.path.join(dataset_path, test_file)
@@ -25,11 +26,15 @@ def load_dataset(dataset_path=DATASET_PATH, train_file=TRAIN_FILE, test_file=TES
     return train_data, test_data
 
 
+# Load a pre-trained machine learning model stored in a pickle file.
 def load_model_from_pickle(model_path):
     model = joblib.load(model_path)
     return model
 
 
+# Preprocess the dataset
+# Transform original data type into a categorical data type.
+# Then encode the categories as integer codes.
 def cat_to_num(data):
     # protocol
     data["proto"] = data["proto"].astype("category")
@@ -47,10 +52,9 @@ def cat_to_num(data):
     data["attack_cat"] = data["attack_cat"].astype("category")
     data["attack_cat"] = data["attack_cat"].cat.codes
 
-
     return data
 
-def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
+def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
     # Feature selection sub-routine
     feature_selection_time = 0
     if method == "rfe" or method == "rfecv":
@@ -68,10 +72,10 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
             rfe = RFECV(model, step=1, min_features_to_select=k,cv=cv)
         else:
             rfe = RFE(model, n_features_to_select=k)
-        fit = rfe.fit(X_train, y_train)
+        fit = rfe.fit(x_train, y_train)
         selected_features = fit.get_support(indices=True)
-        X_train = X_train[X_train.columns[selected_features]]
-        X_test = X_test[X_test.columns[selected_features]]
+        x_train = x_train[x_train.columns[selected_features]]
+        x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] RFE took", feature_selection_time, "seconds")
@@ -81,10 +85,10 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
         print("[Feature Selection] Using Variance Threshold", "using", str(k), "as threshold.")
         start_time = time.time()
         vt = VarianceThreshold(threshold=k)
-        fit = vt.fit(X_train, y_train)
+        fit = vt.fit(x_train, y_train)
         selected_features = fit.get_support(indices=True)
-        X_train = X_train[X_train.columns[selected_features]]
-        X_test = X_test[X_test.columns[selected_features]]
+        x_train = x_train[x_train.columns[selected_features]]
+        x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] Variance Threshold took", feature_selection_time, "seconds")
@@ -96,10 +100,10 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
         print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
         start_time = time.time()
         skb = SelectKBest(chi2, k=k)
-        fit = skb.fit(X_train, y_train)
+        fit = skb.fit(x_train, y_train)
         selected_features = fit.get_support(indices=True)
-        X_train = X_train[X_train.columns[selected_features]]
-        X_test = X_test[X_test.columns[selected_features]]
+        x_train = x_train[x_train.columns[selected_features]]
+        x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] SelectKBest took", feature_selection_time, "seconds")
@@ -111,10 +115,10 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
         print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
         start_time = time.time()
         skb = SelectKBest(f_classif, k=k)
-        fit = skb.fit(X_train, y_train)
+        fit = skb.fit(x_train, y_train)
         selected_features = fit.get_support(indices=True)
-        X_train = X_train[X_train.columns[selected_features]]
-        X_test = X_test[X_test.columns[selected_features]]
+        x_train = x_train[x_train.columns[selected_features]]
+        x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] SelectKBest took", feature_selection_time, "seconds")
@@ -126,20 +130,19 @@ def feature_selection(X_train, y_train, X_test, method, k=None, cv=None):
         print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
         start_time = time.time()
         skb = SelectKBest(mutual_info_classif, k=k)
-        fit = skb.fit(X_train, y_train)
+        fit = skb.fit(x_train, y_train)
         selected_features = fit.get_support(indices=True)
-        X_train = X_train[X_train.columns[selected_features]]
-        X_test = X_test[X_test.columns[selected_features]]
+        x_train = x_train[x_train.columns[selected_features]]
+        x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] SelectKBest took", feature_selection_time, "seconds")
     else:
         print("[Feature Selection] No feature selection method specified. Using all features.")
-    print("[Feature Selection] Train dataset shape after feature selection:", X_train.shape)
-    print("[Feature Selection] Test dataset shape after feature selection:", X_test.shape)
+    print("[Feature Selection] Train dataset shape after feature selection:", x_train.shape)
+    print("[Feature Selection] Test dataset shape after feature selection:", x_test.shape)
 
-    return X_train, X_test, feature_selection_time, k
-
+    return x_train, x_test, feature_selection_time, k
 
 
 def main(**kwargs):
@@ -152,20 +155,21 @@ def main(**kwargs):
     print("[Dataset] Test dataset shape:", test_data.shape)
 
     y_train = train_data["attack_cat"]
-    X_train = train_data.drop(["id", "label", "attack_cat"], axis=1)
+    x_train = train_data.drop(["id", "label", "attack_cat"], axis=1)
 
     y_test = test_data["attack_cat"]
-    X_test = test_data.drop(["id", "label", "attack_cat"], axis=1)
+    x_test = test_data.drop(["id", "label", "attack_cat"], axis=1)
 
     k = kwargs.get("k", None)
-    X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
+    x_train, x_test, fs_time, k = feature_selection(x_train, y_train, x_test,
+                                                    kwargs.get("method", None), float(k) if k else None)
     
     if kwargs.get("model_path", None):
         # Load model from local file
         model = load_model_from_pickle(kwargs.get("model_path"))
         print("[Model] Model loaded from", kwargs.get("model_path"))
         model_features = model.get_booster().feature_names
-        y_pred = model.predict(X_test[model_features])
+        y_pred = model.predict(x_test[model_features])
         VERBOSE = False
     else:
         # Model training
@@ -183,11 +187,11 @@ def main(**kwargs):
             "reg_alpha": 0
         }
         model = XGBClassifier(**xgboost_params)
-        model.fit(X_train, y_train)
+        model.fit(x_train, y_train)
         end_time = time.time()
         model_training_time = round(end_time - start_time, 2)
         print("[Model] Training time:", model_training_time, "seconds")
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(x_test)
         VERBOSE = True
 
     timestamp = int(time.time())
@@ -233,10 +237,11 @@ def main(**kwargs):
     pos = np.arange(sorted_idx.shape[0]) + 0.5
     plt.figure(figsize=(12, 6))
     plt.barh(pos, feature_importance[sorted_idx], align="center")
-    plt.yticks(pos, X_train.columns[sorted_idx])
+    plt.yticks(pos, x_train.columns[sorted_idx])
     plt.xlabel("Feature Importance")
     plt.savefig("figures/" + file_prefix + "_importance.png")
 
 
 if __name__ == "__main__":
     main(**dict(arg.split("=") for arg in sys.argv[1:]) if len(sys.argv) > 1 else {})
+
