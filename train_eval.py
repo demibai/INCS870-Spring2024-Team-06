@@ -225,7 +225,7 @@ def main(**kwargs):
             grid = GridSearchCV(model, xgboost_params, cv=StratifiedKFold(n_splits=5), n_jobs=5, verbose=2, scoring="accuracy")
             start_time = time.time()
             print("[Model] Training started")
-            grid.fit(X_train, y_train)
+            grid.fit(x_train, y_train)
             end_time = time.time()
             model_training_time = round(end_time - start_time, 2)
             print("[Model] Training time:", model_training_time, "seconds")
