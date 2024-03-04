@@ -170,31 +170,31 @@ def main(**kwargs):
     to_drop = [column for column in upper.columns if any(upper[column] > 0.95)]
 
     y_train = train_data["attack_cat"] if task == "multi" else train_data["label"]
-    x_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    X_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
 
     y_test = test_data["attack_cat"] if task == "multi" else test_data["label"]
-    x_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    X_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
 
-    print("[Dataset] Train dataset shape after dropping highly correlated features:", x_train.shape)
-    print("[Dataset] Test dataset shape after dropping highly correlated features:", x_test.shape)
+    print("[Dataset] Train dataset shape after dropping highly correlated features:", X_train.shape)
+    print("[Dataset] Test dataset shape after dropping highly correlated features:", X_test.shape)
 
     # Normalize data
-    x_train = normalize_data(x_train)
-    x_test = normalize_data(x_test)
+    X_train = normalize_data(X_train)
+    X_test = normalize_data(X_test)
 
     k = kwargs.get("k", None)
-    x_train, x_test, fs_time, k = feature_selection(x_train, y_train, x_test, kwargs.get("method", None), float(k) if k else None)
+    X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
 
     # Dimensionality reduction
     if kwargs.get("pca", None):
         # Scale data
         scaler = StandardScaler()
-        x_train = pd.DataFrame(scaler.fit_transform(x_train))
-        X_test = pd.DataFrame(scaler.transform(x_test))
-        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else x_train.shape[1])
-        x_train = pd.DataFrame(pca.fit_transform(x_train))
-        x_test = pd.DataFrame(pca.transform(X_test))
-        print("[PCA] Train dataset shape after PCA:", x_train.shape)
+        X_train = pd.DataFrame(scaler.fit_transform(X_train))
+        X_test = pd.DataFrame(scaler.transform(X_test))
+        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else X_train.shape[1])
+        X_train = pd.DataFrame(pca.fit_transform(X_train))
+        X_test = pd.DataFrame(pca.transform(X_test))
+        print("[PCA] Train dataset shape after PCA:", X_train.shape)
         print("[PCA] Test dataset shape after PCA:", X_test.shape)
 
     if kwargs.get("model_path", None):
@@ -224,7 +224,7 @@ def main(**kwargs):
             grid = GridSearchCV(model, xgboost_params, cv=StratifiedKFold(n_splits=5), n_jobs=5, verbose=2, scoring="accuracy")
             start_time = time.time()
             print("[Model] Training started")
-            grid.fit(x_train, y_train)
+            grid.fit(X_train, y_train)
             end_time = time.time()
             model_training_time = round(end_time - start_time, 2)
             print("[Model] Training time:", model_training_time, "seconds")
@@ -245,11 +245,11 @@ def main(**kwargs):
             model = XGBClassifier(**xgboost_params)
             start_time = time.time()
             print("[Model] Training started")
-            model.fit(x_train, y_train)
+            model.fit(X_train, y_train)
             end_time = time.time()
             model_training_time = round(end_time - start_time, 2)
             print("[Model] Training time:", model_training_time, "seconds")
-        y_pred = model.predict(x_test)
+        y_pred = model.predict(X_test)
         verbose_output = True
 
     timestamp = int(time.time())
@@ -299,7 +299,7 @@ def main(**kwargs):
     pos = np.arange(sorted_idx.shape[0]) + 0.5
     plt.figure(figsize=(12, 6))
     plt.barh(pos, feature_importance[sorted_idx], align="center")
-    plt.yticks(pos, x_train.columns[sorted_idx])
+    plt.yticks(pos, X_train.columns[sorted_idx])
     plt.xlabel("Feature Importance")
     plt.savefig("figures/" + file_prefix + "_importance.png")
     print("[I/O] Feature importance plot saved to", "figures/" + file_prefix + "_importance.png")
