@@ -1,4 +1,4 @@
-# Enhancing Network Intrusion Detection with Feature Selection and Dimensionality Reduction
+# Enhancing Network Intrusion Detection with Feature Selection
 __INCS 870, Spring 2024, Team 06, supervised by Dr. Zhida Li__
 
 ## Overview
