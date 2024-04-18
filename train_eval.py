@@ -2,12 +2,26 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from xgboost import XGBClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.feature_selection import RFE, RFECV, VarianceThreshold, SelectKBest, chi2, f_classif, mutual_info_classif
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+)
+from sklearn.feature_selection import (
+    RFE,
+    RFECV,
+    VarianceThreshold,
+    SelectKBest,
+    chi2,
+    f_classif,
+    mutual_info_classif,
+)
 from configparser import ConfigParser
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
-from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder, normalize
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.compose import ColumnTransformer
 import os
 import time
 import joblib
@@ -19,22 +33,19 @@ constants.read("constants.ini")
 
 # Load the training dataset and testing dataset
 def load_dataset(pca=False):
-    train_set_path = os.path.join(constants.get("CONSTANTS", "DATASET_PATH"), constants.get("CONSTANTS", "TRAIN_FILE"))
-    test_set_path = os.path.join(constants.get("CONSTANTS", "DATASET_PATH"), constants.get("CONSTANTS", "TEST_FILE"))
+    train_set_path = os.path.join(
+        constants.get("CONSTANTS", "DATASET_PATH"),
+        constants.get("CONSTANTS", "TRAIN_FILE"),
+    )
+    test_set_path = os.path.join(
+        constants.get("CONSTANTS", "DATASET_PATH"),
+        constants.get("CONSTANTS", "TEST_FILE"),
+    )
     train_data = pd.read_csv(train_set_path)
     test_data = pd.read_csv(test_set_path)
 
     return train_data, test_data
 
-
-def normalize_data(data):
-    cnt = 0
-    for feature in data.columns:
-        if data[feature].dtype == "float64":
-            data[feature] = np.log1p(data[feature])
-            cnt += 1
-    print("[Normalization] Normalized", cnt, "numerical features.")
-    return data
 
 
 # Load a pre-trained machine learning model stored in a pickle file.
@@ -45,7 +56,7 @@ def load_model_from_pickle(model_path):
 
 # Preprocess the dataset
 # Transform original data type into numerical labels.
-def cat_to_num(data):
+def cat_to_label(data):
     # protocol
     data["proto"] = LabelEncoder().fit_transform(data["proto"])
 
@@ -58,8 +69,13 @@ def cat_to_num(data):
     # attack category
     data["attack_cat"] = LabelEncoder().fit_transform(data["attack_cat"])
 
-
     return data
+
+
+def cat_to_onehot(data):
+
+    return cat_to_label(data)
+
 
 def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
     # Feature selection sub-routine
@@ -70,13 +86,20 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
             k = 20
         else:
             k = int(k)
-        print("[Feature Selection] Using Recursive Feature Elimination,", "selecting", str(k), "features.")
+        print(
+            "[Feature Selection] Using Recursive Feature Elimination,",
+            "selecting",
+            str(k),
+            "features.",
+        )
         start_time = time.time()
         model = XGBClassifier()
         if method == "rfecv":
             cv = 5 if not cv else int(cv)
-            print("[Feature Selection] Using RFECV, splitting dataset into %d folds." % cv)
-            rfe = RFECV(model, step=1, min_features_to_select=k,cv=cv)
+            print(
+                "[Feature Selection] Using RFECV, splitting dataset into %d folds." % cv
+            )
+            rfe = RFECV(model, step=1, min_features_to_select=k, cv=cv)
         else:
             rfe = RFE(model, n_features_to_select=k)
         fit = rfe.fit(x_train, y_train)
@@ -89,7 +112,12 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
     elif method == "variance_threshold":
         if not k:
             k = 0.0
-        print("[Feature Selection] Using Variance Threshold", "using", str(k), "as threshold.")
+        print(
+            "[Feature Selection] Using Variance Threshold",
+            "using",
+            str(k),
+            "as threshold.",
+        )
         start_time = time.time()
         vt = VarianceThreshold(threshold=k)
         fit = vt.fit(x_train, y_train)
@@ -98,13 +126,19 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
         x_test = x_test[x_test.columns[selected_features]]
         end_time = time.time()
         feature_selection_time = round(end_time - start_time, 2)
-        print("[Feature Selection] Variance Threshold took", feature_selection_time, "seconds")
+        print(
+            "[Feature Selection] Variance Threshold took",
+            feature_selection_time,
+            "seconds",
+        )
     elif method == "chi2":
         if not k:
             k = 20
         else:
             k = int(k)
-        print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
+        print(
+            "[Feature Selection] Using SelectKBest,", "selecting", str(k), "features."
+        )
         start_time = time.time()
         skb = SelectKBest(chi2, k=k)
         fit = skb.fit(x_train, y_train)
@@ -119,7 +153,9 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
             k = 20
         else:
             k = int(k)
-        print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
+        print(
+            "[Feature Selection] Using SelectKBest,", "selecting", str(k), "features."
+        )
         start_time = time.time()
         skb = SelectKBest(f_classif, k=k)
         fit = skb.fit(x_train, y_train)
@@ -134,7 +170,9 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
             k = 20
         else:
             k = int(k)
-        print("[Feature Selection] Using SelectKBest,", "selecting", str(k), "features.")
+        print(
+            "[Feature Selection] Using SelectKBest,", "selecting", str(k), "features."
+        )
         start_time = time.time()
         skb = SelectKBest(mutual_info_classif, k=k)
         fit = skb.fit(x_train, y_train)
@@ -145,22 +183,57 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
         feature_selection_time = round(end_time - start_time, 2)
         print("[Feature Selection] SelectKBest took", feature_selection_time, "seconds")
     else:
-        print("[Feature Selection] No feature selection method specified. Using all features.")
-    print("[Feature Selection] Train dataset shape after feature selection:", x_train.shape)
-    print("[Feature Selection] Test dataset shape after feature selection:", x_test.shape)
+        print(
+            "[Feature Selection] No feature selection method specified. Using all features."
+        )
+    print(
+        "[Feature Selection] Train dataset shape after feature selection:",
+        x_train.shape,
+    )
+    print(
+        "[Feature Selection] Test dataset shape after feature selection:", x_test.shape
+    )
 
     return x_train, x_test, feature_selection_time, k
 
 
 def main(**kwargs):
+    
+    #       ┌───────────┐       
+    #       │ UNSW-NB15 │       
+    #       └─────┬─────┘       
+    #             │             
+    # ┌───────────▼────────────┐
+    # │  Dataset Preprocessing │
+    # └───────────┬────────────┘
+    #             │             
+    #   ┌─────────▼─────────┐   
+    #   │ Feature Selection │   
+    #   └─────────┬─────────┘   
+    #             │             
+    #        ┌────▼────┐        
+    #        │ XGBoost │        
+    #        └────┬────┘        
+    #             │             
+    #        ┌────▼────┐        
+    #        │  Result │        
+    #        └─────────┘        
+
     task = kwargs.get("task", "multi")
     if task not in ["multi", "binary"]:
         raise ValueError("Invalid task. Use 'multi' or 'binary'.")
 
     # Load dataset
     train_data, test_data = load_dataset()
-    train_data = cat_to_num(train_data)
-    test_data = cat_to_num(test_data)
+    train_data, test_data = train_test_split(
+        pd.concat([train_data, test_data]), test_size=0.2, random_state=42
+    )
+
+    train_data = cat_to_label(train_data)
+    test_data = cat_to_label(test_data)
+
+    # train_data = cat_to_onehot(train_data)
+    # test_data = cat_to_onehot(test_data)
 
     print("[Dataset] Train dataset shape:", train_data.shape)
     print("[Dataset] Test dataset shape:", test_data.shape)
@@ -175,23 +248,31 @@ def main(**kwargs):
     y_test = test_data["attack_cat"] if task == "multi" else test_data["label"]
     X_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
 
-    print("[Dataset] Train dataset shape after dropping highly correlated features:", X_train.shape)
-    print("[Dataset] Test dataset shape after dropping highly correlated features:", X_test.shape)
+    print(
+        "[Dataset] Train dataset shape after dropping highly correlated features:",
+        X_train.shape,
+    )
+    print(
+        "[Dataset] Test dataset shape after dropping highly correlated features:",
+        X_test.shape,
+    )
 
-    # Normalize data
-    X_train = normalize_data(X_train)
-    X_test = normalize_data(X_test)
+    # #Scale data
+    # X_train = scale_data(X_train)
+    # X_test = scale_data(X_test)
 
     k = kwargs.get("k", None)
-    X_train, X_test, fs_time, k = feature_selection(X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None)
+    X_train, X_test, fs_time, k = feature_selection(
+        X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None
+    )
 
     # Dimensionality reduction
     if kwargs.get("pca", None):
-        # Scale data
-        scaler = StandardScaler()
-        X_train = pd.DataFrame(scaler.fit_transform(X_train))
-        X_test = pd.DataFrame(scaler.transform(X_test))
-        pca = PCA(n_components=int(kwargs.get("pca")) if kwargs.get("pca") else X_train.shape[1])
+        pca = PCA(
+            n_components=(
+                int(kwargs.get("pca")) if kwargs.get("pca") else X_train.shape[1]
+            )
+        )
         X_train = pd.DataFrame(pca.fit_transform(X_train))
         X_test = pd.DataFrame(pca.transform(X_test))
         print("[PCA] Train dataset shape after PCA:", X_train.shape)
@@ -210,8 +291,12 @@ def main(**kwargs):
         if grid_search:
             print("[Model] Using GridSearchCV to find best hyperparameters")
             xgboost_params = {
-                "objective": ["multi:softmax"] if task == "multi" else ["reg:squaredlogerror"],
-                "eval_metric": ["mlogloss", "auc"] if task == "multi" else ["logloss", "auc"],
+                "objective": (
+                    ["multi:softmax"] if task == "multi" else ["reg:squaredlogerror"]
+                ),
+                "eval_metric": (
+                    ["mlogloss", "auc"] if task == "multi" else ["logloss", "auc"]
+                ),
                 "min_child_weight": [1],
                 "max_depth": [6, 8],
                 "num_class": [10] if task == "multi" else [1],
@@ -221,7 +306,14 @@ def main(**kwargs):
                 "colsample_bytree": [0.8],
             }
             model = XGBClassifier()
-            grid = GridSearchCV(model, xgboost_params, cv=StratifiedKFold(n_splits=5), n_jobs=5, verbose=2, scoring="accuracy")
+            grid = GridSearchCV(
+                model,
+                xgboost_params,
+                cv=StratifiedKFold(n_splits=5),
+                n_jobs=5,
+                verbose=2,
+                scoring="accuracy",
+            )
             start_time = time.time()
             print("[Model] Training started")
             grid.fit(X_train, y_train)
@@ -232,17 +324,26 @@ def main(**kwargs):
             model = grid.best_estimator_
         else:
             xgboost_params = {
-                "objective": "multi:softmax" if task == "multi" else "reg:squaredlogerror",
+                "objective": (
+                    "multi:softmax" if task == "multi" else "reg:squaredlogerror"
+                ),
                 "eval_metric": "mlogloss" if task == "multi" else "logloss",
-                "min_child_weight": 1,
+                "min_child_weight": 10,
                 "max_depth": 6,
                 "num_class": 10 if task == "multi" else 1,
-                "learning_rate": 0.3,
-                "n_estimators": 100,
+                "learning_rate": 0.2,
+                "n_estimators": 1000,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
+                "device": "cuda"
             }
             model = XGBClassifier(**xgboost_params)
+            # model = CatBoostClassifier(
+            #     learning_rate=0.3,
+            #     eval_metric="Accuracy",
+            #     verbose=200,
+            #     task_type="GPU",
+            # )
             start_time = time.time()
             print("[Model] Training started")
             model.fit(X_train, y_train)
@@ -257,13 +358,18 @@ def main(**kwargs):
         # Freeze model to disk
         print("[Model] Freezing params to disk")
         model_name = model.__class__.__name__.lower()
-        file_prefix = str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
+        file_prefix = (
+            str(timestamp) + "_" + model_name + "_" + kwargs.get("method", "none") + "_"
+        )
         file_prefix += (str(k) if k else "all") + "_" + task
-        joblib.dump(model, constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + "_model" + ".pkl")
-        print("[I/O] Model saved to", constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + ".pkl")
-        file_prefix += str(k) if k else "all"
-        joblib.dump(model, constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + "_model" + ".pkl")
-        print("[Model] Model saved to", constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + ".pkl")
+        joblib.dump(
+            model,
+            constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + "_model" + ".pkl",
+        )
+        print(
+            "[I/O] Model saved to",
+            constants.get("CONSTANTS", "MODELS_PATH") + file_prefix + ".pkl",
+        )
     else:
         file_prefix = str(timestamp) + "_loaded_model"
 
@@ -302,14 +408,20 @@ def main(**kwargs):
     plt.yticks(pos, X_train.columns[sorted_idx])
     plt.xlabel("Feature Importance")
     plt.savefig("figures/" + file_prefix + "_importance.png")
-    print("[I/O] Feature importance plot saved to", "figures/" + file_prefix + "_importance.png")
+    print(
+        "[I/O] Feature importance plot saved to",
+        "figures/" + file_prefix + "_importance.png",
+    )
 
     # Confusion matrix
     cm = confusion_matrix(y_test, y_pred)
     cm_display = ConfusionMatrixDisplay(cm, display_labels=np.unique(y_test))
     cm_display.plot(cmap="Oranges")
     plt.savefig("figures/" + file_prefix + "_confusion_matrix.png")
-    print("[I/O] Confusion matrix plot saved to", "figures/" + file_prefix + "_confusion_matrix.png")
+    print(
+        "[I/O] Confusion matrix plot saved to",
+        "figures/" + file_prefix + "_confusion_matrix.png",
+    )
 
 
 if __name__ == "__main__":
