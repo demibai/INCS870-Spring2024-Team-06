@@ -1,7 +1,6 @@
----
-title: Enhancing Network Intrusion Detection with Feature Selection
-subtitle: INCS 870, Spring 2024, Team 06, supervised by Dr. Zhida Li
----
+# Enhancing Network Intrusion Detection with Feature Selection and Dimensionality Reduction
+__INCS 870, Spring 2024, Team 06, supervised by Dr. Zhida Li__
+
 ## Overview
 
 This project involves the development of a machine learning pipeline for network intrusion detection. The primary goal is to classify network activities into normal or attack categories, using the UNSW-NB15 dataset. The pipeline includes data preprocessing, feature engineering, model training, hyperparameter tuning, and model evaluation.
