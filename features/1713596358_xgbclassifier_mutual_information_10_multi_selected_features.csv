@@ -1,0 +1,11 @@
+,0
+0,dur
+1,service
+2,rate
+3,dttl
+4,sload
+5,dload
+6,smean
+7,dmean
+8,ct_state_ttl
+9,ct_dst_sport_ltm

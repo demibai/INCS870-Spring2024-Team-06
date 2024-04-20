@@ -1,0 +1,11 @@
+,0
+0,rate
+1,sload
+2,dload
+3,sinpkt
+4,sjit
+5,djit
+6,stcpb
+7,dtcpb
+8,dmean
+9,response_body_len

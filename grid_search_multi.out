@@ -1,1 +1,2 @@
-[Model] Best parameters found by GridSearchCV: {'colsample_bytree': 0.8, 'eval_metric': 'mlogloss', 'learning_rate': 0.3, 'max_depth': 6, 'min_child_weight': 1, 'n_estimators': 100, 'num_class': 10, 'objective': 'multi:softmax', 'subsample': 0.8}
+[Model] Best parameters found by GridSearchCV: {'colsample_bytree': 0.8, 'device': 'cuda', 'eval_metric': 'mlogloss', 'learning_rate': 0.01, 'max_depth': 8, 'min_child_weight': 1, 'n_estimators': 1000, 'num_class': 10, 'objective': 'multi:softmax', 'subsample': 0.8}
+C:\Python312\Lib\site-packages\xgboost\core.py:160:
