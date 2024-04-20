@@ -1,7 +1,8 @@
-$task = "binary"
-$methods = "mutual_information"
-$startK = 10
-$endK = 30
+$task = "multi"
+# $methods = "chi2", "anova", "mutual_information", "rfe"
+$methods = "variance_threshold"
+$startK = 1000
+$endK = 1000
 $step = 10
 $start_time = Get-Date
 

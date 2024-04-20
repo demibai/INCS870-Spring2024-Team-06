@@ -47,7 +47,6 @@ def load_dataset(pca=False):
     return train_data, test_data
 
 
-
 # Load a pre-trained machine learning model stored in a pickle file.
 def load_model_from_pickle(model_path):
     model = joblib.load(model_path)
@@ -186,6 +185,7 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
         print(
             "[Feature Selection] No feature selection method specified. Using all features."
         )
+        selected_features = []
     print(
         "[Feature Selection] Train dataset shape after feature selection:",
         x_train.shape,
@@ -194,30 +194,30 @@ def feature_selection(x_train, y_train, x_test, method, k=None, cv=None):
         "[Feature Selection] Test dataset shape after feature selection:", x_test.shape
     )
 
-    return x_train, x_test, feature_selection_time, k
+    return x_train, x_test, feature_selection_time, k, selected_features
 
 
 def main(**kwargs):
-    
-    #       ┌───────────┐       
-    #       │ UNSW-NB15 │       
-    #       └─────┬─────┘       
-    #             │             
+
+    #       ┌───────────┐
+    #       │ UNSW-NB15 │
+    #       └─────┬─────┘
+    #             │
     # ┌───────────▼────────────┐
     # │  Dataset Preprocessing │
     # └───────────┬────────────┘
-    #             │             
-    #   ┌─────────▼─────────┐   
-    #   │ Feature Selection │   
-    #   └─────────┬─────────┘   
-    #             │             
-    #        ┌────▼────┐        
-    #        │ XGBoost │        
-    #        └────┬────┘        
-    #             │             
-    #        ┌────▼────┐        
-    #        │  Result │        
-    #        └─────────┘        
+    #             │
+    #   ┌─────────▼─────────┐
+    #   │ Feature Selection │
+    #   └─────────┬─────────┘
+    #             │
+    #        ┌────▼────┐
+    #        │ XGBoost │
+    #        └────┬────┘
+    #             │
+    #        ┌────▼────┐
+    #        │  Result │
+    #        └─────────┘
 
     task = kwargs.get("task", "multi")
     if task not in ["multi", "binary"]:
@@ -225,9 +225,11 @@ def main(**kwargs):
 
     # Load dataset
     train_data, test_data = load_dataset()
-    train_data, test_data = train_test_split(
-        pd.concat([train_data, test_data]), test_size=0.2, random_state=42
-    )
+    # Redistribute data
+
+    # train_data, test_data = train_test_split(
+    #     pd.concat([train_data, test_data]), test_size=0.2, random_state=42
+    # )
 
     train_data = cat_to_label(train_data)
     test_data = cat_to_label(test_data)
@@ -238,15 +240,18 @@ def main(**kwargs):
     print("[Dataset] Train dataset shape:", train_data.shape)
     print("[Dataset] Test dataset shape:", test_data.shape)
 
+    # Drop highly correlated features
     corr_matrix = train_data.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop = [column for column in upper.columns if any(upper[column] > 0.95)]
 
     y_train = train_data["attack_cat"] if task == "multi" else train_data["label"]
     X_train = train_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    # X_train = train_data.drop(["id", "label", "attack_cat"], axis=1)
 
     y_test = test_data["attack_cat"] if task == "multi" else test_data["label"]
     X_test = test_data.drop(["id", "label", "attack_cat"] + to_drop, axis=1)
+    # X_test = test_data.drop(["id", "label", "attack_cat"], axis=1)
 
     print(
         "[Dataset] Train dataset shape after dropping highly correlated features:",
@@ -262,7 +267,7 @@ def main(**kwargs):
     # X_test = scale_data(X_test)
 
     k = kwargs.get("k", None)
-    X_train, X_test, fs_time, k = feature_selection(
+    X_train, X_test, fs_time, k, selected_features = feature_selection(
         X_train, y_train, X_test, kwargs.get("method", None), float(k) if k else None
     )
 
@@ -304,6 +309,7 @@ def main(**kwargs):
                 "n_estimators": [100, 1000],
                 "subsample": [0.8],
                 "colsample_bytree": [0.8],
+                "device": ["cuda"],
             }
             model = XGBClassifier()
             grid = GridSearchCV(
@@ -329,13 +335,13 @@ def main(**kwargs):
                 ),
                 "eval_metric": "mlogloss" if task == "multi" else "logloss",
                 "min_child_weight": 10,
-                "max_depth": 6,
+                "max_depth": 8,
                 "num_class": 10 if task == "multi" else 1,
-                "learning_rate": 0.2,
+                "learning_rate": 0.01,
                 "n_estimators": 1000,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
-                "device": "cuda"
+                "device": "cuda",
             }
             model = XGBClassifier(**xgboost_params)
             # model = CatBoostClassifier(
@@ -397,6 +403,13 @@ def main(**kwargs):
     # Save report to disk
     report_df.to_csv("reports/" + file_prefix + "_report.csv")
     print("[I/O] Report saved to", "reports/" + file_prefix + "_report.csv")
+
+    # selected_features to name
+    selected_features = model.get_booster().feature_names
+    # Save selected features to disk
+    pd.DataFrame(selected_features).to_csv(
+        "features/" + file_prefix + "_selected_features.csv"
+    )
 
     # Plot feature importance
     feature_importance = model.feature_importances_
